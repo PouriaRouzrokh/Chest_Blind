@@ -75,7 +75,9 @@ class OllamaClient:
             "think": config.REASONING_EFFORT,  # GPT-OSS reasoning effort: "low", "medium", "high"
             "options": {
                 "temperature": config.TEMPERATURE,
-                "top_p": 0.9
+                "top_p": 0.9,
+                "num_ctx": 32768,  # Large context window
+                "num_predict": 8192  # Generous output token limit for reasoning + response
             }
         }
 
