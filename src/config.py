@@ -23,7 +23,7 @@ PRODUCTION_OUTPUT_FILE = "processed_reports_final.csv"
 CHECKPOINT_FILE = "checkpoint.json"
 
 # Ollama API configuration
-TIMEOUT = 120  # seconds (increased for GPT-OSS with reasoning)
+TIMEOUT = 300  # seconds (5 min for GPT-OSS 20B with reasoning on longer reports)
 MAX_RETRIES = 3
 TEMPERATURE = 0.1
 REASONING_EFFORT = "medium"  # Options: "low", "medium", "high" (GPT-OSS specific)
