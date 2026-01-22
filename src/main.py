@@ -245,6 +245,8 @@ def run_test_mode(client: OllamaClient, header: List[str], all_rows: List[List[s
 def run_production_mode(client: OllamaClient, header: List[str], all_rows: List[List[str]]):
     """Run in production mode with resume capability.
 
+    Continuously processes batches until all rows are complete.
+
     Args:
         client: OllamaClient instance
         header: CSV header row
@@ -256,10 +258,10 @@ def run_production_mode(client: OllamaClient, header: List[str], all_rows: List[
 
     # Initialize checkpoint manager
     checkpoint_mgr = CheckpointManager(config.OUTPUT_DIR)
+    total_rows = len(all_rows)
 
     # Check for existing progress
     processed_count = checkpoint_mgr.get_processed_count()
-    total_rows = len(all_rows)
 
     if processed_count > 0:
         logging.info(f"Found existing progress: {processed_count}/{total_rows} rows already processed")
@@ -268,32 +270,42 @@ def run_production_mode(client: OllamaClient, header: List[str], all_rows: List[
         logging.info(f"Starting fresh processing of {total_rows} rows")
         print(f"\n✓ Starting fresh processing")
 
-    # Get rows to process in this batch
-    batch_rows = get_rows_for_production_mode(all_rows, processed_count, config.BATCH_SIZE)
+    # Process batches until all rows are done
+    while processed_count < total_rows:
+        # Get rows to process in this batch
+        batch_rows = get_rows_for_production_mode(all_rows, processed_count, config.BATCH_SIZE)
 
-    if not batch_rows:
+        if not batch_rows:
+            break
+
+        # Process reports
+        start_time = datetime.now()
+        results = process_reports(client, batch_rows, start_index=processed_count, total_count=total_rows)
+        end_time = datetime.now()
+        duration = (end_time - start_time).total_seconds()
+
+        # If no results (e.g., interrupted), exit the loop
+        if not results:
+            logging.warning("No results returned from batch processing")
+            break
+
+        # Write output (append if file exists)
+        output_path = checkpoint_mgr.output_path
+        append_mode = checkpoint_mgr.output_exists()
+        write_output_csv(header, batch_rows, results, output_path, append_mode=append_mode)
+
+        # Save checkpoint
+        processed_count += len(results)
+        checkpoint_mgr.save_checkpoint(processed_count - 1, total_rows)
+        logging.info(f"Checkpoint saved: {processed_count}/{total_rows} rows processed")
+
+        # Print batch summary
+        print_summary_production(results, duration, output_path, processed_count, total_rows)
+
+    # Final message
+    if processed_count >= total_rows:
         print(f"\n✓ All {total_rows} rows have been processed!")
-        logging.info("All rows already processed")
-        return
-
-    # Process reports
-    start_time = datetime.now()
-    results = process_reports(client, batch_rows, start_index=processed_count, total_count=total_rows)
-    end_time = datetime.now()
-    duration = (end_time - start_time).total_seconds()
-
-    # Write output (append if file exists)
-    output_path = checkpoint_mgr.output_path
-    append_mode = checkpoint_mgr.output_exists()
-    write_output_csv(header, batch_rows, results, output_path, append_mode=append_mode)
-
-    # Save checkpoint
-    new_processed_count = processed_count + len(results)
-    checkpoint_mgr.save_checkpoint(new_processed_count - 1, total_rows)
-    logging.info(f"Checkpoint saved: {new_processed_count}/{total_rows} rows processed")
-
-    # Print summary
-    print_summary_production(results, duration, output_path, new_processed_count, total_rows)
+        logging.info("All rows processing complete")
 
 
 def print_summary(results: List[Tuple[str, str, str]], duration: float, output_path: str):
@@ -374,7 +386,7 @@ def print_summary_production(results: List[Tuple[str, str, str]], duration: floa
     print(f"\nOutput: {output_path}")
 
     if processed_count < total_count:
-        print(f"\n💡 Run again to continue processing (batch size: {config.BATCH_SIZE or 'all remaining'})\n")
+        print(f"\n→ Continuing to next batch...\n")
     else:
         print(f"\n✓ All {total_count} reports have been processed!\n")
 
