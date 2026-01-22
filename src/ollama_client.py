@@ -52,16 +52,22 @@ class OllamaClient:
         """
         return prompts.build_analysis_prompt(report_text)
 
-    def _query_ollama(self, prompt: str, retry_count: int = 0) -> Optional[Dict[str, str]]:
-        """Send query to Ollama API with retry logic.
+    def _query_ollama(self, prompt: str, attempt: int = 1) -> Optional[Dict[str, str]]:
+        """Send query to Ollama API with progressive timeout.
+
+        Uses 5 min timeout on first attempt, 10 min on second attempt.
+        Maximum 2 attempts, then returns None (error).
 
         Args:
             prompt: The prompt to send
-            retry_count: Current retry attempt
+            attempt: Current attempt number (1 or 2)
 
         Returns:
             Dict with 'content' and 'thinking' keys, or None if failed
         """
+        # Progressive timeout: 5 min first, 10 min second (max 2 attempts)
+        timeout = config.TIMEOUT if attempt == 1 else config.TIMEOUT_RETRY
+
         payload = {
             "model": self.model,
             "messages": [
@@ -81,11 +87,11 @@ class OllamaClient:
         }
 
         try:
-            logging.debug(f"Sending request to Ollama...")
+            logging.debug(f"Sending request to Ollama (attempt {attempt}, timeout {timeout}s)...")
             response = requests.post(
                 self.chat_url,
                 json=payload,
-                timeout=config.TIMEOUT
+                timeout=timeout
             )
             logging.debug(f"Received response with status {response.status_code}")
             response.raise_for_status()
@@ -98,23 +104,19 @@ class OllamaClient:
             }
 
         except requests.Timeout:
-            if retry_count < config.MAX_RETRIES:
-                wait_time = 2 ** retry_count  # Exponential backoff
-                logging.warning(f"Timeout, retrying in {wait_time}s... (attempt {retry_count + 1}/{config.MAX_RETRIES})")
-                time.sleep(wait_time)
-                return self._query_ollama(prompt, retry_count + 1)
+            if attempt == 1:
+                logging.warning(f"Timeout after {timeout}s, retrying with {config.TIMEOUT_RETRY}s timeout...")
+                return self._query_ollama(prompt, attempt=2)
             else:
-                logging.error(f"Request timed out after {config.MAX_RETRIES} retries")
+                logging.error(f"Request timed out after {timeout}s on final attempt, skipping")
                 return None
 
         except requests.RequestException as e:
-            if retry_count < config.MAX_RETRIES:
-                wait_time = 2 ** retry_count
-                logging.warning(f"Request error: {e}, retrying in {wait_time}s... (attempt {retry_count + 1}/{config.MAX_RETRIES})")
-                time.sleep(wait_time)
-                return self._query_ollama(prompt, retry_count + 1)
+            if attempt == 1:
+                logging.warning(f"Request error: {e}, retrying...")
+                return self._query_ollama(prompt, attempt=2)
             else:
-                logging.error(f"Ollama API error after {config.MAX_RETRIES} retries: {e}")
+                logging.error(f"Ollama API error on final attempt: {e}")
                 return None
 
     def _parse_response(self, response: str) -> Dict[str, str]:
