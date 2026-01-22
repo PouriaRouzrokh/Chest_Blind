@@ -14,7 +14,7 @@ REPORT_COLUMN_INDEX = 8  # Column 9 (0-indexed) - "Report Text"
 # Processing configuration
 RUN_MODE = "production"  # "test" for random sampling with timestamps, "production" for sequential with resume
 NUM_ROWS = 20  # For test mode: number of rows to sample
-BATCH_SIZE = 10  # For production mode: number of rows to process per batch (None for all remaining)
+BATCH_SIZE = 50  # For production mode: number of rows to process per batch (None for all remaining)
 RANDOM_SAMPLE = True  # For test mode only: randomly sample NUM_ROWS
 RANDOM_SEED = 789  # For test mode only: reproducibility seed
 

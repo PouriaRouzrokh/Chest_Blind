@@ -76,20 +76,22 @@ class OllamaClient:
             "options": {
                 "temperature": config.TEMPERATURE,
                 "top_p": 0.9,
-                "num_ctx": 32768,  # Large context window
-                "num_predict": 8192  # Generous output token limit for reasoning + response
+                "num_predict": 4096  # Generous output token limit for reasoning + response
             }
         }
 
         try:
+            logging.debug(f"Sending request to Ollama...")
             response = requests.post(
                 self.chat_url,
                 json=payload,
                 timeout=config.TIMEOUT
             )
+            logging.debug(f"Received response with status {response.status_code}")
             response.raise_for_status()
             result = response.json()
             message = result.get('message', {})
+            logging.debug(f"Parsed response successfully")
             return {
                 'content': message.get('content', ''),
                 'thinking': message.get('thinking', '')
